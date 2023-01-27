@@ -22,23 +22,30 @@ class FiderDB():
 
     def insert(self, title: str, description: str) -> int:
         cursor = self.conn.cursor()
-        cursor.execute(
-            """
-                INSERT INTO posts (title, slug, number, description, tenant_id, user_id, created_at, status)
-                VALUES (%(title)s, %(slug)%, (SELECT COALESCE(MAX(number), 0) + 1 FROM posts p WHERE p.tenant_id = %(tenant)s),
-                    %(descr)s, %(tenant)s, %(user)s, %(date)s, 0)
-                RETURNING id
-            """,
-            {
-                "title": title,
-                "slug": self.slug_of(title),
-                "descr": description,
-                "tenant": self.tenantid,
-                "user": self.userid,
-                "date": datetime.now(),
-            }
-        )
-        return cursor.fetchone()[0]
+        try:
+            cursor.execute(
+                """
+                    INSERT INTO posts (title, slug, number, description, tenant_id, user_id, created_at, status)
+                    VALUES (%(title)s, %(slug)s, (SELECT COALESCE(MAX(number), 0) + 1 FROM posts p WHERE p.tenant_id = %(tenant)s),
+                        %(descr)s, %(tenant)s, %(user)s, %(date)s, 0)
+                    RETURNING id
+                """,
+                {
+                    "title": title,
+                    "slug": self.slug_of(title),
+                    "descr": description,
+                    "tenant": self.tenantid,
+                    "user": self.userid,
+                    "date": str(datetime.now()),
+                }
+            )
+        except psycopg2.errors.UniqueViolation:
+            print(f"WARNING: already existing app in db : {title}")
+            cursor.execute("SELECT id from posts where slug like %s", self.slug_of(title))
+
+        finally:
+            return cursor.fetchone()[0]
+
 
     def set_as_completed(self, post_id: int, reply: str):
         self.conn.cursor().execute(
