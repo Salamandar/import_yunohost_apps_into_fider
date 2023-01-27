@@ -10,7 +10,7 @@ def main():
     with open("/etc/yunohost/apps/fider/settings.yml", encoding="utf-8") as settings_file:
         settings = yaml.load(settings_file, Loader=yaml.SafeLoader)
 
-    fider_db = FiderDB("localhost", settings["db_name"], settings["db_name"], settings["psqlpwd"])
+    fider_db = FiderDB("localhost", settings["db_name"], settings["psqlpwd"], settings["db_name"])
 
     with open("wishlist_formatted.json", encoding="utf-8") as apps_json:
         apps = json.load(apps_json)
