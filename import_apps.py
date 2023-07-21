@@ -1,47 +1,66 @@
 #!/usr/bin/env python3
 
-from typing import Tuple
 import json
 import yaml
 
-from fider_db import FiderDB
+DRY_RUN = False
 
-def main():
-    with open("/etc/yunohost/apps/fider/settings.yml", encoding="utf-8") as settings_file:
-        settings = yaml.load(settings_file, Loader=yaml.SafeLoader)
+if not DRY_RUN:
+    from fider_db import FiderDB
 
-    fider_db = FiderDB("localhost", settings["db_name"], settings["psqlpwd"], settings["db_name"])
 
+def main() -> None:
+    if not DRY_RUN:
+        with open("/etc/yunohost/apps/fider/settings.yml", encoding="utf-8") as settings_file:
+            settings = yaml.load(settings_file, Loader=yaml.SafeLoader)
+
+        fider_db = FiderDB("localhost", settings["db_name"], settings["psqlpwd"], settings["db_name"])
+
+    all_apps = []
+
+    # List of packaged apps
+    with open("apps.json", encoding="utf-8") as apps_json:
+        apps = json.load(apps_json)["apps"]
+
+    for app in apps.values():
+        all_apps.append({
+            "name": app["manifest"]["name"],
+            "description": app["manifest"]["description"]["en"],
+            "project_url": app["manifest"].get("url", None),
+            "upstream": app["manifest"].get("upstream", {}).get("code", None),
+            "package_url": app["git"]["url"],
+            "finished": True
+        })
+
+    # List of wishlists
     with open("wishlist_formatted.json", encoding="utf-8") as apps_json:
         apps = json.load(apps_json)
 
     for app in apps:
+        app["finished"] = False
+        all_apps.append(app)
+
+    # Import all apps in Fider
+    for app in all_apps:
         name = f"New app: {app['name']}"
 
         description = f"{app['description']}"
-        if url := app["url"]:
+
+        if url := app["project_url"]:
             description += f"\nProject url: {url}"
+
         if upstream := app["upstream"]:
             description += f"\nUpstream source code: {upstream}"
 
-        post_id = fider_db.insert(name, description)
-        fider_db.tag_as_new_app(post_id)
+        if DRY_RUN:
+            print(name, description)
 
-    with open("apps.json", encoding="utf-8") as apps_json:
-        apps = json.load(apps_json)["apps"]
+        else:
+            post_id = fider_db.insert(name, description)
+            fider_db.tag_as_new_app(post_id)
 
-    for app in apps:
-        name = app["manifest"]["name"]
-        descr = app["manifest"]["description"]["en"]
-        url = app["manifest"]["url"]
-        source = app["manifest"]["upstream"]["code"]
-        pkg_url = app["git"]["url"]
-
-        description = f"{descr}\nProject url: {url}\nUpstream source code: {source}"
-
-        post_id = fider_db.insert(f"New App: {name}", description)
-        fider_db.tag_as_new_app(post_id)
-        fider_db.set_as_completed(post_id, f"Packaged at: {pkg_url}")
+            if app["finished"]:
+                fider_db.set_as_completed(post_id, f"Packaged at: {app['package_url']}")
 
 
 if __name__ == "__main__":
